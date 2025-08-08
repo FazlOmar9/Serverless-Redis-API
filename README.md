@@ -21,14 +21,14 @@ graph TD
     F --> A
     
     subgraph "API Operations"
-        J[GET /{key}]
-        K[POST /{key}]
-        L[DELETE /{key}]
+        G[GET /{key}]
+        H[POST /{key}]
+        I[DELETE /{key}]
     end
     
-    A --> J
-    A --> K
-    A --> L
+    A -.-> G
+    A -.-> H
+    A -.-> I
 ```
 
 ## Features
