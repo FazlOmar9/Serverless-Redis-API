@@ -1,4 +1,5 @@
 const redis = require('redis');
+const url = require('url');
 
 // Redis client initialization
 let redisClient;
@@ -20,6 +21,11 @@ const getRedisClient = async () => {
   }
   return redisClient;
 };
+
+function parseQueryParams(path) {
+  const parsed = url.parse(path, true);
+  return parsed.query || {};
+}
 
 exports.handler = async (event) => {
   const headers = {
@@ -44,46 +50,61 @@ exports.handler = async (event) => {
     const path = event.requestContext.http.path;
 
     // Extract key from path (expecting /key or /{key})
-    const key = path.startsWith('/') ? path.substring(1) : path;
-
-    if (!key && method !== 'GET') {
-      return {
-        statusCode: 400,
-        headers,
-        body: JSON.stringify({ error: 'Key is required' }),
-      };
-    }
+    // Also parse query parameters
+    const rawKey = path.split('?')[0];
+    const key = rawKey.startsWith('/') ? rawKey.substring(1) : rawKey;
+    const query = parseQueryParams(path);
+    const type = (query.type || 'string').toLowerCase();
 
     switch (method) {
       case 'GET':
-        // GET /key - Get value
         if (!key) {
           return {
             statusCode: 400,
             headers,
-            body: JSON.stringify({
-              error: 'Key is required for GET operation',
-            }),
+            body: JSON.stringify({ error: 'Key is required for GET operation' }),
           };
         }
 
-        const value = await client.get(key);
-        if (value === null) {
+        if (type === 'hash') {
+          const field = query.field;
+          if (!field) {
+            return {
+              statusCode: 400,
+              headers,
+              body: JSON.stringify({ error: 'Field is required for hash GET operation' }),
+            };
+          }
+          const value = await client.hGet(key, field);
+          if (value === null) {
+            return {
+              statusCode: 404,
+              headers,
+              body: JSON.stringify({ error: 'Field not found in hash', key, field }),
+            };
+          }
           return {
-            statusCode: 404,
+            statusCode: 200,
             headers,
-            body: JSON.stringify({ error: 'Key not found' }),
+            body: JSON.stringify({ key, field, value }),
+          };
+        } else {
+          const value = await client.get(key);
+          if (value === null) {
+            return {
+              statusCode: 404,
+              headers,
+              body: JSON.stringify({ error: 'Key not found', key }),
+            };
+          }
+          return {
+            statusCode: 200,
+            headers,
+            body: JSON.stringify({ key, value }),
           };
         }
-
-        return {
-          statusCode: 200,
-          headers,
-          body: JSON.stringify({ key, value }),
-        };
 
       case 'POST':
-        // POST /key with value in body - Set value
         if (!event.body) {
           return {
             statusCode: 400,
@@ -93,43 +114,93 @@ exports.handler = async (event) => {
         }
 
         const body = JSON.parse(event.body);
-        if (!body.value) {
+
+        if (type === 'hash') {
+          const { field, value } = body;
+          if (!field || value === undefined) {
+            return {
+              statusCode: 400,
+              headers,
+              body: JSON.stringify({ error: 'Field and value are required in request body for hash type' }),
+            };
+          }
+          await client.hSet(key, field, value);
           return {
-            statusCode: 400,
+            statusCode: 200,
             headers,
             body: JSON.stringify({
-              error: 'Value is required in request body',
+              message: 'Hash field set successfully',
+              key,
+              field,
+              value,
+            }),
+          };
+        } else {
+          if (!body.value) {
+            return {
+              statusCode: 400,
+              headers,
+              body: JSON.stringify({ error: 'Value is required in request body for string type' }),
+            };
+          }
+          await client.set(key, body.value);
+          return {
+            statusCode: 200,
+            headers,
+            body: JSON.stringify({
+              message: 'Value set successfully',
+              key,
+              value: body.value,
             }),
           };
         }
 
-        await client.set(key, body.value);
-        return {
-          statusCode: 200,
-          headers,
-          body: JSON.stringify({
-            message: 'Value set successfully',
-            key,
-            value: body.value,
-          }),
-        };
-
       case 'DELETE':
-        // DELETE /key - Delete key-value pair
-        const deleted = await client.del(key);
-        if (deleted === 0) {
+        if (!key) {
           return {
-            statusCode: 404,
+            statusCode: 400,
             headers,
-            body: JSON.stringify({ error: 'Key not found' }),
+            body: JSON.stringify({ error: 'Key is required for DELETE operation' }),
           };
         }
 
-        return {
-          statusCode: 200,
-          headers,
-          body: JSON.stringify({ message: 'Key deleted successfully', key }),
-        };
+        if (type === 'hash') {
+          const field = query.field;
+          if (!field) {
+            return {
+              statusCode: 400,
+              headers,
+              body: JSON.stringify({ error: 'Field is required for hash DELETE operation' }),
+            };
+          }
+          const deleted = await client.hDel(key, field);
+          if (deleted === 0) {
+            return {
+              statusCode: 404,
+              headers,
+              body: JSON.stringify({ error: 'Field not found in hash', key, field }),
+            };
+          }
+          return {
+            statusCode: 200,
+            headers,
+            body: JSON.stringify({ message: 'Hash field deleted successfully', key, field }),
+          };
+        } else {
+          const deleted = await client.del(key);
+          if (deleted === 0) {
+            return {
+              statusCode: 404,
+              headers,
+              body: JSON.stringify({ error: 'Key not found', key }),
+            };
+          }
+          return {
+            statusCode: 200,
+            headers,
+            body: JSON.stringify({ message: 'Key deleted successfully', key }),
+          };
+        }
 
       default:
         return {
