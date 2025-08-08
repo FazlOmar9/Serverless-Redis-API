@@ -1,5 +1,4 @@
 const redis = require('redis');
-const url = require('url');
 
 // Redis client initialization
 let redisClient;
@@ -21,11 +20,6 @@ const getRedisClient = async () => {
   }
   return redisClient;
 };
-
-function parseQueryParams(path) {
-  const parsed = url.parse(path, true);
-  return parsed.query || {};
-}
 
 exports.handler = async (event) => {
   const headers = {
@@ -50,10 +44,10 @@ exports.handler = async (event) => {
     const path = event.requestContext.http.path;
 
     // Extract key from path (expecting /key or /{key})
-    // Also parse query parameters
-    const rawKey = path.split('?')[0];
-    const key = rawKey.startsWith('/') ? rawKey.substring(1) : rawKey;
-    const query = parseQueryParams(path);
+    const key = path.startsWith('/') ? path.substring(1) : path;
+
+    // Get query parameters from the event object
+    const query = event.queryStringParameters || {};
     const type = (query.type || 'string').toLowerCase();
 
     switch (method) {
@@ -62,32 +56,49 @@ exports.handler = async (event) => {
           return {
             statusCode: 400,
             headers,
-            body: JSON.stringify({ error: 'Key is required for GET operation' }),
+            body: JSON.stringify({
+              error: 'Key is required for GET operation',
+            }),
           };
         }
 
         if (type === 'hash') {
           const field = query.field;
-          if (!field) {
+          if (field) {
+            // Get specific field from hash
+            const value = await client.hGet(key, field);
+            if (value === null) {
+              return {
+                statusCode: 404,
+                headers,
+                body: JSON.stringify({
+                  error: 'Field not found in hash',
+                  key,
+                  field,
+                }),
+              };
+            }
             return {
-              statusCode: 400,
+              statusCode: 200,
               headers,
-              body: JSON.stringify({ error: 'Field is required for hash GET operation' }),
+              body: JSON.stringify({ key, field, value }),
+            };
+          } else {
+            // Get all fields from hash
+            const hash = await client.hGetAll(key);
+            if (Object.keys(hash).length === 0) {
+              return {
+                statusCode: 404,
+                headers,
+                body: JSON.stringify({ error: 'Hash not found or empty', key }),
+              };
+            }
+            return {
+              statusCode: 200,
+              headers,
+              body: JSON.stringify({ key, hash }),
             };
           }
-          const value = await client.hGet(key, field);
-          if (value === null) {
-            return {
-              statusCode: 404,
-              headers,
-              body: JSON.stringify({ error: 'Field not found in hash', key, field }),
-            };
-          }
-          return {
-            statusCode: 200,
-            headers,
-            body: JSON.stringify({ key, field, value }),
-          };
         } else {
           const value = await client.get(key);
           if (value === null) {
@@ -116,31 +127,55 @@ exports.handler = async (event) => {
         const body = JSON.parse(event.body);
 
         if (type === 'hash') {
-          const { field, value } = body;
-          if (!field || value === undefined) {
+          const { field, value, fields } = body;
+
+          if (fields && typeof fields === 'object') {
+            // Set multiple fields at once
+            const fieldArray = [];
+            for (const [f, v] of Object.entries(fields)) {
+              fieldArray.push(f, v);
+            }
+            await client.hSet(key, fieldArray);
+            return {
+              statusCode: 200,
+              headers,
+              body: JSON.stringify({
+                message: 'Hash fields set successfully',
+                key,
+                fields,
+              }),
+            };
+          } else if (field && value !== undefined) {
+            // Set single field
+            await client.hSet(key, field, value);
+            return {
+              statusCode: 200,
+              headers,
+              body: JSON.stringify({
+                message: 'Hash field set successfully',
+                key,
+                field,
+                value,
+              }),
+            };
+          } else {
             return {
               statusCode: 400,
               headers,
-              body: JSON.stringify({ error: 'Field and value are required in request body for hash type' }),
+              body: JSON.stringify({
+                error:
+                  'Either "field" and "value" or "fields" object is required for hash type',
+              }),
             };
           }
-          await client.hSet(key, field, value);
-          return {
-            statusCode: 200,
-            headers,
-            body: JSON.stringify({
-              message: 'Hash field set successfully',
-              key,
-              field,
-              value,
-            }),
-          };
         } else {
           if (!body.value) {
             return {
               statusCode: 400,
               headers,
-              body: JSON.stringify({ error: 'Value is required in request body for string type' }),
+              body: JSON.stringify({
+                error: 'Value is required in request body for string type',
+              }),
             };
           }
           await client.set(key, body.value);
@@ -160,7 +195,9 @@ exports.handler = async (event) => {
           return {
             statusCode: 400,
             headers,
-            body: JSON.stringify({ error: 'Key is required for DELETE operation' }),
+            body: JSON.stringify({
+              error: 'Key is required for DELETE operation',
+            }),
           };
         }
 
@@ -170,7 +207,9 @@ exports.handler = async (event) => {
             return {
               statusCode: 400,
               headers,
-              body: JSON.stringify({ error: 'Field is required for hash DELETE operation' }),
+              body: JSON.stringify({
+                error: 'Field is required for hash DELETE operation',
+              }),
             };
           }
           const deleted = await client.hDel(key, field);
@@ -178,13 +217,21 @@ exports.handler = async (event) => {
             return {
               statusCode: 404,
               headers,
-              body: JSON.stringify({ error: 'Field not found in hash', key, field }),
+              body: JSON.stringify({
+                error: 'Field not found in hash',
+                key,
+                field,
+              }),
             };
           }
           return {
             statusCode: 200,
             headers,
-            body: JSON.stringify({ message: 'Hash field deleted successfully', key, field }),
+            body: JSON.stringify({
+              message: 'Hash field deleted successfully',
+              key,
+              field,
+            }),
           };
         } else {
           const deleted = await client.del(key);
