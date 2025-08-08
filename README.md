@@ -22,9 +22,9 @@ graph TD
 
     %% API Operations as subgraph
     subgraph API_Operations ["API Operations"]
-        G[GET /&#123;key&#125;]
-        H[POST /&#123;key&#125;]
-        I[DELETE /&#123;key&#125;]
+        G[GET /key]
+        H[POST /key]
+        I[DELETE /key]
     end
 
     %% Dashed arrows from client to API ops
