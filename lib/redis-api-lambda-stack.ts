@@ -36,7 +36,6 @@ export class RedisApiLambdaStack extends cdk.Stack {
           lambda.HttpMethod.GET,
           lambda.HttpMethod.POST,
           lambda.HttpMethod.DELETE,
-          lambda.HttpMethod.OPTIONS,
         ],
         allowedHeaders: ['Content-Type', 'Authorization'],
         allowCredentials: false,
