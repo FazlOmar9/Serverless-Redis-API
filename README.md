@@ -12,20 +12,22 @@ A CDK TypeScript project that creates a Lambda-based Redis API with three simple
 
 ```mermaid
 graph TD
+    %% Main architecture flow
     A[Client Request] --> B[Function URL]
-    B --> C[AWS Lambda<br/>Node.js 20.x<br/>256MB RAM]
+    B --> C[AWS Lambda<br>Node.js 20.x<br>256MB RAM]
     C --> D[Redis Client]
     D --> E[Redis Server]
-    
     C --> F[Response]
     F --> A
-    
-    subgraph "API Operations"
-        G[GET /{key}]
-        H[POST /{key}]
-        I[DELETE /{key}]
+
+    %% API Operations as subgraph
+    subgraph API_Operations ["API Operations"]
+        G[GET /&#123;key&#125;]
+        H[POST /&#123;key&#125;]
+        I[DELETE /&#123;key&#125;]
     end
-    
+
+    %% Dashed arrows from client to API ops
     A -.-> G
     A -.-> H
     A -.-> I
