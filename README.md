@@ -6,7 +6,7 @@
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.6.3-3178C6?style=for-the-badge&logo=typescript)](https://www.typescriptlang.org/)
 [![License](https://img.shields.io/badge/License-MIT-green?style=for-the-badge)](LICENSE)
 
-A CDK TypeScript project that creates a Lambda-based Redis API with three simple operations: GET, SET, and DELETE.
+A CDK TypeScript project that creates a Lambda-based Redis API supporting both string and hash operations with GET, SET, and DELETE methods.
 
 ## Architecture
 
@@ -35,13 +35,25 @@ graph TD
 
 ## Features
 
-* **GET** `/{key}` - Retrieve a value by key
-* **POST** `/{key}` - Set a value for a key (value in request body)
+### String Operations
+
+* **GET** `/{key}` - Retrieve a string value by key
+* **POST** `/{key}` - Set a string value for a key (value in request body)
 * **DELETE** `/{key}` - Delete a key-value pair
+
+### Hash Operations  
+
+* **GET** `/{key}?type=hash&field={field}` - Retrieve a specific field from a hash
+* **POST** `/{key}?type=hash` - Set a field-value pair in a hash (field and value in request body)
+* **DELETE** `/{key}?type=hash&field={field}` - Delete a specific field from a hash
+
+### Additional Features
+
 * Lambda Function URL with CORS enabled
 * Node.js 20.x runtime with 256MB memory
 * Environment variables loaded from `.env` file
 * Redis connection with username/password authentication support
+* Support for both Redis strings and hash data types
 
 ## Setup
 
@@ -72,13 +84,15 @@ npx cdk deploy
 
 After deployment, you'll get a Function URL. Use it to make API calls:
 
-### GET a value
+### String Operations
+
+#### GET a string value
 
 ```bash
 curl https://your-function-url.lambda-url.region.on.aws/mykey
 ```
 
-### SET a value
+#### SET a string value
 
 ```bash
 curl -X POST https://your-function-url.lambda-url.region.on.aws/mykey \
@@ -86,15 +100,39 @@ curl -X POST https://your-function-url.lambda-url.region.on.aws/mykey \
   -d '{"value": "my-value"}'
 ```
 
-### DELETE a key
+#### DELETE a string key
 
 ```bash
 curl -X DELETE https://your-function-url.lambda-url.region.on.aws/mykey
 ```
 
+### Hash Operations
+
+#### GET a hash field
+
+```bash
+curl "https://your-function-url.lambda-url.region.on.aws/myhash?type=hash&field=myfield"
+```
+
+#### SET a hash field
+
+```bash
+curl -X POST "https://your-function-url.lambda-url.region.on.aws/myhash?type=hash" \
+  -H "Content-Type: application/json" \
+  -d '{"field": "myfield", "value": "my-hash-value"}'
+```
+
+#### DELETE a hash field
+
+```bash
+curl -X DELETE "https://your-function-url.lambda-url.region.on.aws/myhash?type=hash&field=myfield"
+```
+
 ## API Response Examples
 
-### Successful GET
+### String Operations
+
+#### Successful GET
 
 ```json
 {
@@ -103,7 +141,7 @@ curl -X DELETE https://your-function-url.lambda-url.region.on.aws/mykey
 }
 ```
 
-### Successful SET
+#### Successful SET
 
 ```json
 {
@@ -113,7 +151,7 @@ curl -X DELETE https://your-function-url.lambda-url.region.on.aws/mykey
 }
 ```
 
-### Successful DELETE
+#### Successful DELETE
 
 ```json
 {
@@ -122,11 +160,63 @@ curl -X DELETE https://your-function-url.lambda-url.region.on.aws/mykey
 }
 ```
 
-### Error Response
+### Hash Operations
+
+#### Successful Hash GET
 
 ```json
 {
-  "error": "Key not found"
+  "key": "myhash",
+  "field": "myfield",
+  "value": "my-hash-value"
+}
+```
+
+#### Successful Hash SET
+
+```json
+{
+  "message": "Hash field set successfully",
+  "key": "myhash",
+  "field": "myfield",
+  "value": "my-hash-value"
+}
+```
+
+#### Successful Hash DELETE
+
+```json
+{
+  "message": "Hash field deleted successfully",
+  "key": "myhash",
+  "field": "myfield"
+}
+```
+
+### Error Responses
+
+#### Key/Field Not Found
+
+```json
+{
+  "error": "Key not found",
+  "key": "nonexistent"
+}
+```
+
+```json
+{
+  "error": "Field not found in hash",
+  "key": "myhash",
+  "field": "nonexistent"
+}
+```
+
+#### Missing Parameters
+
+```json
+{
+  "error": "Field is required for hash GET operation"
 }
 ```
 
